@@ -115,7 +115,7 @@ class CloseTicket(nextcord.ui.View):
             if log_channel and transcript_url:
                 # ส่งเป็น Embed พร้อมลิงก์กดได้เลย
                 embed = nextcord.Embed(
-                    title="📝 Ticket Transcript",
+                    title="Ticket Transcript",
                     description=f"**Ticket:** {interaction.channel.name}\n**Closed by:** {interaction.user.mention}\n\n[Click here to view Transcript]({transcript_url})",
                     color=0x00ff00
                 )
