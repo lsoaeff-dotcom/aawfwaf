@@ -119,7 +119,6 @@ class CloseTicket(nextcord.ui.View):
                     description=f"**Ticket:** {interaction.channel.name}\n**Closed by:** {interaction.user.mention}\n\n[Click here to view Transcript]({transcript_url})",
                     color=0x00ff00
                 )
-                embed.set_footer(text="Link will expire if bot restarts (Render Free Tier)")
                 
                 await log_channel.send(embed=embed)
 
@@ -168,6 +167,42 @@ async def ticketpanel(interaction: Interaction):
     embed = nextcord.Embed(title="Ticket System", description="Click to open a ticket", color=0x2f3136)
     await interaction.channel.send(embed=embed, view=OpenTicketView())
     await interaction.response.send_message("Panel created", ephemeral=True)
+
+@bot.slash_command(name="add", description="Add user to ticket")
+async def add(
+    interaction: Interaction,
+    member: nextcord.Member = SlashOption(description="User to add")
+):
+    if not is_ticket_channel(interaction.channel):
+        return await interaction.response.send_message(
+            "This command can only be used in a ticket channel.",
+            ephemeral=True
+        )
+    await interaction.channel.set_permissions(
+        member,
+        view_channel=True,
+        send_messages=True
+    )
+    await interaction.response.send_message(
+        f"Added {member.mention}",
+        ephemeral=True
+    )
+
+@bot.slash_command(name="remove", description="Remove user from ticket")
+async def remove(
+    interaction: Interaction,
+    member: nextcord.Member = SlashOption(description="User to remove")
+):
+    if not is_ticket_channel(interaction.channel):
+        return await interaction.response.send_message(
+            "This command can only be used in a ticket channel.",
+            ephemeral=True
+        )
+    await interaction.channel.set_permissions(member, overwrite=None)
+    await interaction.response.send_message(
+        f"Removed {member.mention}",
+        ephemeral=True
+    )
 
 @bot.event
 async def on_ready():
