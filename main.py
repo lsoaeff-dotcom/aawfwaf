@@ -23,21 +23,21 @@ TRANSCRIPTS_DIR = "transcripts" # โฟลเดอร์เก็บไฟล�
 
 # ตรวจสอบและสร้างโฟลเดอร์เก็บไฟล์
 if not os.path.exists(TRANSCRIPTS_DIR):
-    os.makedirs(TRANSCRIPTS_DIR)
+    os.makedirs(TRANSCRIPTS_DIR)
 
 def get_ticket_count():
-    if not os.path.exists(CONFIG_FILE):
-        return 0
-    with open(CONFIG_FILE, "r") as f:
-        data = json.load(f)
-        return data.get("count", 0)
+    if not os.path.exists(CONFIG_FILE):
+        return 0
+    with open(CONFIG_FILE, "r") as f:
+        data = json.load(f)
+        return data.get("count", 0)
 
 def save_ticket_count(count):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump({"count": count}, f)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump({"count": count}, f)
 
 def is_ticket_channel(channel):
-    return channel.name.startswith("ticket-")
+    return channel.name.startswith("ticket-")
 
 intents = nextcord.Intents.default()
 intents.members = True
@@ -50,165 +50,165 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is running!"
+    return "Bot is running!"
 
 # เพิ่ม Route สำหรับเปิดดูไฟล์ Transcript ผ่านเว็บ
 @app.route('/transcripts/<path:filename>')
 def serve_transcript(filename):
-    return send_from_directory(os.path.abspath(TRANSCRIPTS_DIR), filename)
+    return send_from_directory(os.path.abspath(TRANSCRIPTS_DIR), filename)
 
 def run():
-  app.run(host='0.0.0.0', port=8080)
+  app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-    t = Thread(target=run)
-    t.start()
+    t = Thread(target=run)
+    t.start()
 
 # ================= TRANSCRIPT GEN =================
 async def create_transcript_url(channel: nextcord.TextChannel):
-    # ตั้งชื่อไฟล์ให้ไม่ซ้ำ (ใช้ ID)
-    file_name = f"{channel.name}-{channel.id}.html"
-    html_path = os.path.join(TRANSCRIPTS_DIR, file_name)
+    # ตั้งชื่อไฟล์ให้ไม่ซ้ำ (ใช้ ID)
+    file_name = f"{channel.name}-{channel.id}.html"
+    html_path = os.path.join(TRANSCRIPTS_DIR, file_name)
 
-    # สร้าง HTML
-    transcript = await chat_exporter.export(
-        channel,
-        limit=None,
-        tz_info="Asia/Bangkok",
-        bot=channel.guild.me
-    )
+    # สร้าง HTML
+    transcript = await chat_exporter.export(
+        channel,
+        limit=None,
+        tz_info="Asia/Bangkok",
+        bot=channel.guild.me
+    )
 
-    if transcript is None:
-        return None
+    if transcript is None:
+        return None
 
-    # บันทึกไฟล์ลงเครื่อง (ชั่วคราวบน Render)
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(transcript)
+    # บันทึกไฟล์ลงเครื่อง (ชั่วคราวบน Render)
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(transcript)
 
-    # สร้างลิงก์ URL
-    full_url = f"{APP_URL}/transcripts/{file_name}"
-    return full_url
+    # สร้างลิงก์ URL
+    full_url = f"{APP_URL}transcripts/{file_name}"
+    return full_url
 
 # ================= VIEW =================
 class CloseTicket(nextcord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.closed = False
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.closed = False
 
-    @nextcord.ui.button(label="", emoji="<:approve:1431941755439153332>", custom_id="close")
-    async def close(self, button: nextcord.ui.Button, interaction: Interaction):
-        if self.closed:
-            await interaction.response.send_message("Ticket is already being closed", ephemeral=True)
-            return
+    @nextcord.ui.button(label="", emoji="<:approve:1431941755439153332>", custom_id="close")
+    async def close(self, button: nextcord.ui.Button, interaction: Interaction):
+        if self.closed:
+            await interaction.response.send_message("Ticket is already being closed", ephemeral=True)
+            return
 
-        self.closed = True
-        button.disabled = True
-        await interaction.message.edit(view=self)
+        self.closed = True
+        button.disabled = True
+        await interaction.message.edit(view=self)
 
-        await interaction.response.send_message("Closing ticket, generating link...")
+        await interaction.response.send_message("Closing ticket, generating link...")
 
-        # สร้างลิงก์
-        transcript_url = await create_transcript_url(interaction.channel)
+        # สร้างลิงก์
+        transcript_url = await create_transcript_url(interaction.channel)
 
-        if LOG_CHANNEL_ID:
-            log_channel = bot.get_channel(LOG_CHANNEL_ID)
-            if log_channel and transcript_url:
-                # ส่งเป็น Embed พร้อมลิงก์กดได้เลย
-                embed = nextcord.Embed(
-                    title="Ticket Transcript",
-                    description=f"**Ticket:** {interaction.channel.name}\n**Closed by:** {interaction.user.mention}\n\n[Click here to view Transcript]({transcript_url})",
-                    color=0x00ff00
-                )
-                
-                await log_channel.send(embed=embed)
+        if LOG_CHANNEL_ID:
+            log_channel = bot.get_channel(LOG_CHANNEL_ID)
+            if log_channel and transcript_url:
+                # ส่งเป็น Embed พร้อมลิงก์กดได้เลย
+                embed = nextcord.Embed(
+                    title="Ticket Transcript",
+                    description=f"**Ticket:** {interaction.channel.name}\n**Closed by:** {interaction.user.mention}\n\n[Click here to view Transcript]({transcript_url})",
+                    color=0x00ff00
+                )
+                
+                await log_channel.send(embed=embed)
 
-        await asyncio.sleep(3)
-        await interaction.channel.delete()
+        await asyncio.sleep(3)
+        await interaction.channel.delete()
 
 class OpenTicketView(nextcord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+    def __init__(self):
+        super().__init__(timeout=None)
 
-    @nextcord.ui.button(label="", emoji="<:idk:1431941766893932626>", custom_id="open")
-    async def open_ticket(self, button: nextcord.ui.Button, interaction: Interaction):
-        
-        current_count = get_ticket_count() + 1
-        save_ticket_count(current_count)
-        ticket_number = current_count
+    @nextcord.ui.button(label="", emoji="<:idk:1431941766893932626>", custom_id="open")
+    async def open_ticket(self, button: nextcord.ui.Button, interaction: Interaction):
+        
+        current_count = get_ticket_count() + 1
+        save_ticket_count(current_count)
+        ticket_number = current_count
 
-        category = interaction.guild.get_channel(TICKET_CATEGORY_ID)
-        if not category:
-             await interaction.response.send_message("Error: Category ID not set.", ephemeral=True)
-             return
+        category = interaction.guild.get_channel(TICKET_CATEGORY_ID)
+        if not category:
+             await interaction.response.send_message("Error: Category ID not set.", ephemeral=True)
+             return
 
-        overwrites = {
-            interaction.guild.default_role: nextcord.PermissionOverwrite(view_channel=False),
-            interaction.user: nextcord.PermissionOverwrite(view_channel=True, send_messages=True)
-        }
+        overwrites = {
+            interaction.guild.default_role: nextcord.PermissionOverwrite(view_channel=False),
+            interaction.user: nextcord.PermissionOverwrite(view_channel=True, send_messages=True)
+        }
 
-        channel = await interaction.guild.create_text_channel(
-            name=f"ticket-{ticket_number:04d}",
-            category=category,
-            overwrites=overwrites
-        )
+        channel = await interaction.guild.create_text_channel(
+            name=f"ticket-{ticket_number:04d}",
+            category=category,
+            overwrites=overwrites
+        )
 
-        embed = nextcord.Embed(title="Ticket Chat", description="Support will be with you shortly.", color=0x2f3136)
-        message = await channel.send(content=f"{interaction.user.mention}", embed=embed, view=CloseTicket())
-        await message.pin()
+        embed = nextcord.Embed(title="Ticket Chat", description="Support will be with you shortly.", color=0x2f3136)
+        message = await channel.send(content=f"{interaction.user.mention}", embed=embed, view=CloseTicket())
+        await message.pin()
 
-        await interaction.response.send_message(f"Ticket created: {channel.mention}", ephemeral=True)
+        await interaction.response.send_message(f"Ticket created: {channel.mention}", ephemeral=True)
 
 # ================= COMMANDS =================
 @bot.slash_command(name="panel", description="Create ticket panel")
 async def ticketpanel(interaction: Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("No permission", ephemeral=True)
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("No permission", ephemeral=True)
 
-    embed = nextcord.Embed(title="Ticket System", description="Click to open a ticket", color=0x2f3136)
-    await interaction.channel.send(embed=embed, view=OpenTicketView())
-    await interaction.response.send_message("Panel created", ephemeral=True)
+    embed = nextcord.Embed(title="Ticket System", description="Click to open a ticket", color=0x2f3136)
+    await interaction.channel.send(embed=embed, view=OpenTicketView())
+    await interaction.response.send_message("Panel created", ephemeral=True)
 
 @bot.slash_command(name="add", description="Add user to ticket")
 async def add(
-    interaction: Interaction,
-    member: nextcord.Member = SlashOption(description="User to add")
+    interaction: Interaction,
+    member: nextcord.Member = SlashOption(description="User to add")
 ):
-    if not is_ticket_channel(interaction.channel):
-        return await interaction.response.send_message(
-            "This command can only be used in a ticket channel.",
-            ephemeral=True
-        )
-    await interaction.channel.set_permissions(
-        member,
-        view_channel=True,
-        send_messages=True
-    )
-    await interaction.response.send_message(
-        f"Added {member.mention}",
-        ephemeral=True
-    )
+    if not is_ticket_channel(interaction.channel):
+        return await interaction.response.send_message(
+            "This command can only be used in a ticket channel.",
+            ephemeral=True
+        )
+    await interaction.channel.set_permissions(
+        member,
+        view_channel=True,
+        send_messages=True
+    )
+    await interaction.response.send_message(
+        f"Added {member.mention}",
+        ephemeral=True
+    )
 
 @bot.slash_command(name="remove", description="Remove user from ticket")
 async def remove(
-    interaction: Interaction,
-    member: nextcord.Member = SlashOption(description="User to remove")
+    interaction: Interaction,
+    member: nextcord.Member = SlashOption(description="User to remove")
 ):
-    if not is_ticket_channel(interaction.channel):
-        return await interaction.response.send_message(
-            "This command can only be used in a ticket channel.",
-            ephemeral=True
-        )
-    await interaction.channel.set_permissions(member, overwrite=None)
-    await interaction.response.send_message(
-        f"Removed {member.mention}",
-        ephemeral=True
-    )
+    if not is_ticket_channel(interaction.channel):
+        return await interaction.response.send_message(
+            "This command can only be used in a ticket channel.",
+            ephemeral=True
+        )
+    await interaction.channel.set_permissions(member, overwrite=None)
+    await interaction.response.send_message(
+        f"Removed {member.mention}",
+        ephemeral=True
+    )
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user}")
-    bot.add_view(OpenTicketView())
-    bot.add_view(CloseTicket())
+    print(f"Logged in as {bot.user}")
+    bot.add_view(OpenTicketView())
+    bot.add_view(CloseTicket())
 
 keep_alive()
 bot.run(TOKEN)
