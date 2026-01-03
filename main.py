@@ -6,19 +6,24 @@ import os
 import asyncio
 import chat_exporter
 from threading import Thread
-from flask import Flask
+from flask import Flask, send_from_directory
 
 # ================= CONFIGURATION =================
-# ใช้ Environment Variables จาก Render เป็นหลัก ถ้าไม่มีให้ใช้ค่า Default หรืออ่านจากไฟล์
-# คุณต้องไปตั้งค่า Environment Variables ในหน้า Dashboard ของ Render
-
 TOKEN = os.environ.get("TOKEN")
 LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0))
 TICKET_CATEGORY_ID = int(os.environ.get("TICKET_CATEGORY_ID", 0))
 
-# ส่วน Ticket Count ยังต้องใช้ไฟล์ชั่วคราว (ข้อควรระวัง: เลขจะรีเซ็ตเมื่อ Deploy ใหม่)
+# ใส่ URL เว็บของคุณที่ได้จาก Render (ไม่ต้องมี / ปิดท้าย)
+# เช่น https://my-ticket-bot.onrender.com
+# แนะนำให้ไปตั้งใน Environment Variable ชื่อ APP_URL จะดีที่สุด
+APP_URL = os.environ.get("APP_URL", "https://aawfwaf.onrender.com/")
+
 CONFIG_FILE = "ticket_count.json"
-TRANSCRIPTS_DIR = "transcripts"
+TRANSCRIPTS_DIR = "transcripts" # โฟลเดอร์เก็บไฟล์
+
+# ตรวจสอบและสร้างโฟลเดอร์เก็บไฟล์
+if not os.path.exists(TRANSCRIPTS_DIR):
+    os.makedirs(TRANSCRIPTS_DIR)
 
 def get_ticket_count():
     if not os.path.exists(CONFIG_FILE):
@@ -40,12 +45,17 @@ intents.message_content = True
 
 bot = commands.Bot(intents=intents)
 
-# ================= FLASK SERVER (KEEP ALIVE) =================
+# ================= FLASK SERVER (WEB & TRANSCRIPT HOST) =================
 app = Flask('')
 
 @app.route('/')
 def home():
     return "Bot is running!"
+
+# เพิ่ม Route สำหรับเปิดดูไฟล์ Transcript ผ่านเว็บ
+@app.route('/transcripts/<path:filename>')
+def serve_transcript(filename):
+    return send_from_directory(os.path.abspath(TRANSCRIPTS_DIR), filename)
 
 def run():
   app.run(host='0.0.0.0', port=8080)
@@ -54,14 +64,13 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# ================= TRANSCRIPT =================
-async def create_transcript_file(channel: nextcord.TextChannel):
-    guild_id = str(channel.guild.id)
-    os.makedirs(os.path.join(TRANSCRIPTS_DIR, guild_id), exist_ok=True)
-
+# ================= TRANSCRIPT GEN =================
+async def create_transcript_url(channel: nextcord.TextChannel):
+    # ตั้งชื่อไฟล์ให้ไม่ซ้ำ (ใช้ ID)
     file_name = f"{channel.name}-{channel.id}.html"
-    html_path = os.path.join(TRANSCRIPTS_DIR, guild_id, file_name)
+    html_path = os.path.join(TRANSCRIPTS_DIR, file_name)
 
+    # สร้าง HTML
     transcript = await chat_exporter.export(
         channel,
         limit=None,
@@ -72,10 +81,13 @@ async def create_transcript_file(channel: nextcord.TextChannel):
     if transcript is None:
         return None
 
+    # บันทึกไฟล์ลงเครื่อง (ชั่วคราวบน Render)
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(transcript)
 
-    return html_path
+    # สร้างลิงก์ URL
+    full_url = f"{APP_URL}/transcripts/{file_name}"
+    return full_url
 
 # ================= VIEW =================
 class CloseTicket(nextcord.ui.View):
@@ -83,7 +95,7 @@ class CloseTicket(nextcord.ui.View):
         super().__init__(timeout=None)
         self.closed = False
 
-    @nextcord.ui.button(label="", emoji="<:approve:1431941755439153332>", custom_id="close") # เปลี่ยน Emoji เป็น Default เพื่อป้องกัน error ถ้าบอทไม่อยู่ในเซิฟที่เก็บ Emoji
+    @nextcord.ui.button(label="", emoji="<:approve:1431941755439153332>", custom_id="close")
     async def close(self, button: nextcord.ui.Button, interaction: Interaction):
         if self.closed:
             await interaction.response.send_message("Ticket is already being closed", ephemeral=True)
@@ -93,18 +105,23 @@ class CloseTicket(nextcord.ui.View):
         button.disabled = True
         await interaction.message.edit(view=self)
 
-        await interaction.response.send_message("Closing ticket, generating transcript...")
+        await interaction.response.send_message("Closing ticket, generating link...")
 
-        html_file_path = await create_transcript_file(interaction.channel)
+        # สร้างลิงก์
+        transcript_url = await create_transcript_url(interaction.channel)
 
         if LOG_CHANNEL_ID:
             log_channel = bot.get_channel(LOG_CHANNEL_ID)
-            if log_channel and html_file_path:
-                file_to_send = nextcord.File(html_file_path, filename=f"transcript-{interaction.channel.name}.html")
-                await log_channel.send(
-                    content=f"**Transcript Log**\nTicket: {interaction.channel.name}\nClosed by: {interaction.user.mention}",
-                    file=file_to_send
+            if log_channel and transcript_url:
+                # ส่งเป็น Embed พร้อมลิงก์กดได้เลย
+                embed = nextcord.Embed(
+                    title="📝 Ticket Transcript",
+                    description=f"**Ticket:** {interaction.channel.name}\n**Closed by:** {interaction.user.mention}\n\n[Click here to view Transcript]({transcript_url})",
+                    color=0x00ff00
                 )
+                embed.set_footer(text="Link will expire if bot restarts (Render Free Tier)")
+                
+                await log_channel.send(embed=embed)
 
         await asyncio.sleep(3)
         await interaction.channel.delete()
@@ -118,14 +135,11 @@ class OpenTicketView(nextcord.ui.View):
         
         current_count = get_ticket_count() + 1
         save_ticket_count(current_count)
-        
         ticket_number = current_count
 
         category = interaction.guild.get_channel(TICKET_CATEGORY_ID)
-        
-        # ตรวจสอบว่ามี Category หรือไม่
         if not category:
-             await interaction.response.send_message("Error: Ticket Category ID not found configuration.", ephemeral=True)
+             await interaction.response.send_message("Error: Category ID not set.", ephemeral=True)
              return
 
         overwrites = {
@@ -134,12 +148,12 @@ class OpenTicketView(nextcord.ui.View):
         }
 
         channel = await interaction.guild.create_text_channel(
-            name=f"ticket-{ticket_number:04d}", # จัดรูปแบบเป็น 0001, 0002
+            name=f"ticket-{ticket_number:04d}",
             category=category,
             overwrites=overwrites
         )
 
-        embed = nextcord.Embed( description="Do not ping staff / everyone", color=0x2f3136)
+        embed = nextcord.Embed(title="Ticket Chat", description="Support will be with you shortly.", color=0x2f3136)
         message = await channel.send(content=f"{interaction.user.mention}", embed=embed, view=CloseTicket())
         await message.pin()
 
@@ -161,6 +175,5 @@ async def on_ready():
     bot.add_view(OpenTicketView())
     bot.add_view(CloseTicket())
 
-# เริ่ม Web Server ก่อนเริ่มบอท
 keep_alive()
 bot.run(TOKEN)
