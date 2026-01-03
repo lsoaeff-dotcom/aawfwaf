@@ -83,7 +83,7 @@ class CloseTicket(nextcord.ui.View):
         super().__init__(timeout=None)
         self.closed = False
 
-    @nextcord.ui.button(label="", emoji="🔒", custom_id="close") # เปลี่ยน Emoji เป็น Default เพื่อป้องกัน error ถ้าบอทไม่อยู่ในเซิฟที่เก็บ Emoji
+    @nextcord.ui.button(label="", emoji="<:approve:1431941755439153332>", custom_id="close") # เปลี่ยน Emoji เป็น Default เพื่อป้องกัน error ถ้าบอทไม่อยู่ในเซิฟที่เก็บ Emoji
     async def close(self, button: nextcord.ui.Button, interaction: Interaction):
         if self.closed:
             await interaction.response.send_message("Ticket is already being closed", ephemeral=True)
@@ -102,7 +102,7 @@ class CloseTicket(nextcord.ui.View):
             if log_channel and html_file_path:
                 file_to_send = nextcord.File(html_file_path, filename=f"transcript-{interaction.channel.name}.html")
                 await log_channel.send(
-                    content=f"📝 **Transcript Log**\nTicket: {interaction.channel.name}\nClosed by: {interaction.user.mention}",
+                    content=f"**Transcript Log**\nTicket: {interaction.channel.name}\nClosed by: {interaction.user.mention}",
                     file=file_to_send
                 )
 
@@ -113,7 +113,7 @@ class OpenTicketView(nextcord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @nextcord.ui.button(label="Open Ticket", emoji="📩", custom_id="open")
+    @nextcord.ui.button(label="", emoji="<:idk:1431941766893932626>", custom_id="open")
     async def open_ticket(self, button: nextcord.ui.Button, interaction: Interaction):
         
         current_count = get_ticket_count() + 1
@@ -139,7 +139,7 @@ class OpenTicketView(nextcord.ui.View):
             overwrites=overwrites
         )
 
-        embed = nextcord.Embed(title="Ticket Chat", description="Support will be with you shortly.", color=0x2f3136)
+        embed = nextcord.Embed( description="Do not ping staff / everyone", color=0x2f3136)
         message = await channel.send(content=f"{interaction.user.mention}", embed=embed, view=CloseTicket())
         await message.pin()
 
